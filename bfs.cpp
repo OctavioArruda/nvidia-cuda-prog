@@ -10,45 +10,76 @@ using namespace std;
 #define INF 99999
 #define GOAL 5000
 
-__global__ void kernel_cuda_simple(...)
+/*	Init visited vec as false parallel */
+__global__ void initVisitedVec(bool *Vec)
 {
-	int tid = blockIdx.x * blockDim.x + threadIdx.x;
-	int num_threads = blockDim.x * gridDim.x;
-	for (int v = 0; v < num_vertices; v += num_threads)
-	{
-		int vertex = v + tid;
-		if (vertex < num_vertices)
-		{
-			for (int n = 0; n < v_adj_length[vertex]; n++)
-			{
-				int neighbor = v_adj_list[v_adj_begin[vertex] + n];
+	int idx;
+	int sizeVec = Vec.length();
 
-				if (result[neighbor] > result[vertex] + 1)
+	for (idx = blockIdx.x * blockDim.x + threadIdx.x; idx < sizeVec; idx += blockDim.x * gridDim.x)
+	{
+		Vec[idx] = false;
+	}
+
+}
+
+__global__ void freeNodes(int *visited, int** *graph)
+{
+	int idx;
+	int sizeVisited = visited.length();
+
+	for(idx = blockIdx.x * blockDim.x + threadIdx.x; idx < sizeVisited; idx += blockDim.x * gridDim.x)
+	{
+		cudaFree(visited);
+		cudaFree(graph[idx]);
+	}
+}
+
+/* Paralellel search*/
+__global__ void searchParallel(int *visited, int** *graph)
+{
+	int idx;
+	int sizeVisited = visited.length();
+	queue<int> q;
+	q.push(0);
+	visited[0] = true;
+	
+	clockBegin = GetTime();
+
+	while(!q.empty())
+	{
+
+		/* first node */
+		int v = q.front();
+		q.pop();
+		cout << "visited " << v << endl;
+		if(v == GOAL)
+		{
+			cout << "Found " << GOAL << endl;
+			timeElapsed = (GetTime() - clockBegin)/1000000;
+			printf("Computation time: %5lf\n", timeElapsed);
+			return 0;
+		}
+
+		for(idx = blockIdx.x * blockDim.x + threadIdx.x; idx < sizeVisited; idx += blockDim.x * gridDim.x)
+		{
+			if(graph[v][idx] != INF && v != idx)
+			{
+				if(visited[idx] == false)
 				{
-					result[neighbor] = result[vertex] + 1;
-					*still_running = true;
+					visited[idx] = true;
+					q.push(idx);
 				}
 			}
 		}
 	}
-}
-void run()
-{ /* Setup and data transfer code omitted */
-	while (*still_running)
-	{
-		cudaMemcpy(k_still_running, &false_value, sizeof(bool) * 1, cudaMemcpyHostToDevice);
-		kernel_cuda_simple<<<BLOCKS, THREADS>>>(...);
-		cudaMemcpy(still_running, k_still_running, sizeof(bool) * 1, cudaMemcpyDeviceToHost);
-	}
-	
-	cudaThreadSynchronize();
 }
 
 double GetTime(void)
 {
    struct  timeval time;
    double  Time;
-
+   
    gettimeofday(&time, (struct timezone *) NULL);
    Time = ((double)time.tv_sec*1000000.0 + (double)time.tv_usec);
    return(Time);
@@ -67,7 +98,7 @@ int main(int argc, char **argv){
         graph = new int*[nNodes];
         for (int i = 0; i < nNodes; ++i)
         {
-            graph[i] = new int[nNodes];
+            graph[i] = new int[nNodes]; 
             for (int j = 0; j < nNodes; ++j)
 			{
                 graph[i][j] = INF;
