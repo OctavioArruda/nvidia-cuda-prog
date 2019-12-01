@@ -22,8 +22,7 @@ double GetTime(void)
    return(Time);
 }
 
-__global__ void bfs_parallel(int nNodes, int *graph, bool *visited, bool *isRunning) 
-{
+__global__ void bfs_kernel(int nNodes, int *graph, bool *visited, bool *isRunning) {
     int threadIdentifier = blockIdx.x * blockDim.x + threadIdx.x;
     int nThread = blockDim.x * gridDim.x;
 
@@ -37,7 +36,7 @@ __global__ void bfs_parallel(int nNodes, int *graph, bool *visited, bool *isRunn
 			{
 				if (graph[vertex * nNodes + i] != INF && vertex != i) 
 				{
-                    /* Neighbor */
+                    // Neighbor
 					if (!visited[i]) 
 					{
                         visited[i] = true;
@@ -48,6 +47,7 @@ __global__ void bfs_parallel(int nNodes, int *graph, bool *visited, bool *isRunn
         }
     }
 }
+
 
 int main(int argc, char **argv){
 
@@ -80,6 +80,7 @@ int main(int argc, char **argv){
         graph[b][a] = w;
     }
 
+    /* BFS */
     int *graph_d;
     bool false_val = false;
     bool *running, *running_d;
@@ -97,11 +98,10 @@ int main(int argc, char **argv){
 
 	visited = new bool[nNodes];
 	
-    for (int i = 0; i < nNodes; i++)
-    {
-        visited[i] = 0;
-    }
-    
+    for(int i = 0; i < nNodes; i++)
+        {
+			visited[i] = 0;
+		}
     cudaMalloc(&visited_d, nNodes * sizeof(bool));
     cudaMemcpy(visited_d, visited, nNodes * sizeof(bool), cudaMemcpyHostToDevice);
 
@@ -112,8 +112,7 @@ int main(int argc, char **argv){
         cudaMemcpy(running_d, &false_val, 1 * sizeof(bool), cudaMemcpyHostToDevice);
         int blockSize = 32;
         int numBlocks = (nNodes + blockSize - 1) / blockSize;
-
-        bfs_parallel<<<numBlocks, blockSize>>>(nNodes, graph_d, visited_d, running_d);
+        bfs_kernel<<<numBlocks, blockSize>>>(nNodes, graph_d, visited_d, running_d);
         cudaMemcpy(running, running_d, 1 * sizeof(bool), cudaMemcpyDeviceToHost);
     }
 
@@ -131,7 +130,7 @@ int main(int argc, char **argv){
         
     printf("%5lf\n", timeElapsed);
 
-	for (int i = 0; i < nNodes; i++)
+	for(int i = 0; i < nNodes; i++)
 	{
 		free(graph[i]);
 	}
